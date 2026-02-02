@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>HTML with CSS Example</title>
+<!-- Links the external CSS file -->
+<link href="styles.css" rel="stylesheet"/>
+<style>
+/* OpenDyslexic accessibility override */
+@font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff') format('woff');
+    font-weight: bold;
+    font-style: normal;
+}
+
+/* Apply globally but safely */
+body, p, span, li, a, td, th, div {
+    font-family: 'OpenDyslexic', Arial, sans-serif !important;
+}
+</style></head>
+<body>
+<header>
+<h1>Welcome to My Website</h1>
+</header>
+<p>This is a paragraph of text styled with CSS.</p>
+<ul>
+<li>Item One</li>
+<li>Item Two</li>
+<li>Item Three</li>
+</ul>
+</body>
+</html> b

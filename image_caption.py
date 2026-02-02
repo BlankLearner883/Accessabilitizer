@@ -38,9 +38,9 @@ for img in soup.find_all("img", src=True):
             ids = model.generate(**inputs)
         caption = processor.decode(ids[0], skip_special_tokens=True)
     except Exception as e:
-        caption = f"[ERROR: {e}]"
+        caption = "[ERROR: {e}]"
 
-    print(f"{img_src} → {caption}")
+    print("{img_src} → {caption}")
 
     # ---- add caption under the image ----
     caption_tag = soup.new_tag("p", attrs={"class": "caption"})
@@ -53,4 +53,4 @@ output_path = input_path.replace(".html", "_captioned.html")
 with open(output_path, "w", encoding="utf-8") as f:
     f.write(str(soup))
 
-print(f"\n✔ Done! Updated HTML saved as:\n{output_path}")
+print("\n✔ Done! Updated HTML saved as:\n{output_path}")
