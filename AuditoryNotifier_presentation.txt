@@ -1,0 +1,211 @@
+================================================================================
+AUDITORY NOTIFIER — PRODUCT INTRODUCTION (PRESENTATION OUTLINE)
+================================================================================
+Each section below can be treated as one slide or one spoken segment.
+================================================================================
+
+
+--------------------------------------------------------------------------------
+SLIDE 1 — TITLE
+--------------------------------------------------------------------------------
+
+AuditoryNotifier
+Accessibility tools for video and web content
+
+Tagline: Make media and pages easier to perceive—subtitles, smoother video,
+readable fonts, and image descriptions.
+
+
+--------------------------------------------------------------------------------
+SLIDE 2 — THE PROBLEM
+--------------------------------------------------------------------------------
+
+Many people struggle with fast flicker, unclear speech in video, dense web
+text, or images without context.
+
+Standard tools are often scattered (one app for captions, another for fonts,
+another for video fixes).
+
+Goal: One project that bundles practical, offline-friendly workflows in one
+place.
+
+
+--------------------------------------------------------------------------------
+SLIDE 3 — WHAT AUDITORY NOTIFIER IS
+--------------------------------------------------------------------------------
+
+A small toolkit (Python + optional GUI) that helps you:
+
+1. Burn subtitles into video from the audio track
+2. Reduce flicker in video for more comfortable viewing
+3. Restyle HTML with a dyslexia-friendly font
+4. Add automatic image captions to HTML pages
+5. Launch everything from a simple CLI or a desktop UI
+
+
+--------------------------------------------------------------------------------
+SLIDE 4 — WHO IT IS FOR
+--------------------------------------------------------------------------------
+
+Users who want clearer video and web content without complex pipelines
+
+Educators / creators who need accessible exports
+
+Developers who want scripts they can extend or automate
+
+
+--------------------------------------------------------------------------------
+SLIDE 5 — FEATURE 1: SUBTITLE BURN-IN
+--------------------------------------------------------------------------------
+
+What it does: Transcribes speech and embeds subtitles into the video file.
+
+Why it matters: Works on any player—no separate subtitle file to load.
+
+Rough flow: Video -> speech-to-text -> subtitles -> FFmpeg burn-in ->
+*_subtitled.*
+
+
+--------------------------------------------------------------------------------
+SLIDE 6 — FEATURE 2: FLICKER REDUCTION
+--------------------------------------------------------------------------------
+
+What it does: Detects harsh brightness changes and smooths problematic frames.
+
+Why it matters: Can reduce discomfort from rapid flicker in some clips.
+
+Output: A new video file next to the original (e.g. *_flicker.mp4).
+
+
+--------------------------------------------------------------------------------
+SLIDE 7 — FEATURE 3: DYSLEXIA-FRIENDLY HTML
+--------------------------------------------------------------------------------
+
+What it does: Injects OpenDyslexic styling into an HTML page.
+
+Why it matters: Improves readability for many users without editing every
+paragraph by hand.
+
+Output: A new HTML file (e.g. *_dyslexia.html).
+
+
+--------------------------------------------------------------------------------
+SLIDE 8 — FEATURE 4: IMAGE CAPTIONS
+--------------------------------------------------------------------------------
+
+What it does: Finds images in HTML and adds short text descriptions under
+each image.
+
+Why it matters: Screen reader and sighted users both benefit from context.
+
+Output: A new HTML file (e.g. *_captioned.*).
+
+
+--------------------------------------------------------------------------------
+SLIDE 9 — FEATURE 5: LAUNCHERS
+--------------------------------------------------------------------------------
+
+Command line: accessible.py — one entry point, modes for each tool.
+
+GUI: accessible_ui.py — pick a folder, see matching files (video / HTML),
+run a tool with one click.
+
+Fit: Good for demos and non-technical users.
+
+
+--------------------------------------------------------------------------------
+SLIDE 10 — HOW IT FITS TOGETHER (BIG PICTURE)
+--------------------------------------------------------------------------------
+
+Inputs:  video (.mp4, …)  or  HTML (.html, .htm)
+            |
+    Choose a tool (CLI / UI)
+            |
+Outputs:  new files beside the originals (predictable names)
+
+Design idea: Keep outputs next to the source so nothing gets lost in the
+wrong folder.
+
+
+--------------------------------------------------------------------------------
+SLIDE 11 — TECHNOLOGY (OVERVIEW)
+--------------------------------------------------------------------------------
+
+Python scripts for each workflow
+
+FFmpeg for video processing (subtitle burn-in)
+
+Speech-to-text via faster-whisper-style tooling
+
+Computer vision (OpenCV) for flicker workflow
+
+Optional ML for image captioning (e.g. BLIP-style models)
+
+GUI: Tkinter (no extra install for the UI shell)
+
+Exact versions and installs: see requirements.txt in the repo.
+
+
+--------------------------------------------------------------------------------
+SLIDE 12 — GETTING STARTED
+--------------------------------------------------------------------------------
+
+1. Install Python dependencies from requirements.txt
+2. Ensure FFmpeg is available (bundled path or system PATH)
+3. Run either:
+   - python accessible_ui.py   (GUI), or
+   - python accessible.py <mode> <file>   (CLI)
+
+
+--------------------------------------------------------------------------------
+SLIDE 13 — STRENGTHS
+--------------------------------------------------------------------------------
+
+Practical workflows, not a giant platform
+
+Clear outputs (suffix-based filenames)
+
+Extensible—each tool is its own script
+
+
+--------------------------------------------------------------------------------
+SLIDE 14 — LIMITATIONS
+--------------------------------------------------------------------------------
+
+Heavy jobs (transcription, captioning) need time and compute
+
+HTML editing via custom parsing is powerful but not magic for messy pages
+
+Accessibility is multi-dimensional—this toolkit covers specific pain points,
+not everything
+
+
+--------------------------------------------------------------------------------
+SLIDE 15 — ROADMAP IDEAS (OPTIONAL)
+--------------------------------------------------------------------------------
+
+Presets for font size / contrast in subtitles
+
+Batch processing in the UI
+
+Stronger HTML handling for complex templates
+
+Packaging as a single installer for non-developers
+
+
+--------------------------------------------------------------------------------
+SLIDE 16 — CLOSING
+--------------------------------------------------------------------------------
+
+AuditoryNotifier bundles video and web accessibility helpers into one
+project—with CLI and GUI options.
+
+Call to action: Try the UI launcher, run one file end-to-end, and iterate on
+what your users need most.
+
+Thank you / Q&A
+
+
+================================================================================
+END OF FILE
+================================================================================

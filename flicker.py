@@ -1,49 +1,78 @@
-import cv2
+"""
+Flicker reduction: smooths luminance in video frames to reduce flicker.
+Usage: python flicker.py <video> <threshold>
+  threshold: luminance change fraction (e.g. 0.4) that triggers smoothing.
+Output: next to input file as <basename>_flicker.mp4
+"""
+
+import os
 import sys
+
+import cv2
 import progress_bar_util
 
-print("Finished Importing")
+# ---------------------------------------------------------------------------
+# CLI validation
+# ---------------------------------------------------------------------------
+if len(sys.argv) < 3:
+    print("Usage: python flicker.py <video> <threshold>")
+    print("  e.g. python flicker.py input.mp4 0.4")
+    sys.exit(1)
 
-# Sets up input video and determines basic characteristics
-input_file_path = sys.argv[1]
+input_file_path = os.path.abspath(sys.argv[1])
+if not os.path.isfile(input_file_path):
+    print(f"Video file not found: {input_file_path}")
+    sys.exit(1)
+
+try:
+    gray_threshold = float(sys.argv[2])
+except ValueError:
+    print("Threshold must be a number (e.g. 0.4)")
+    sys.exit(1)
+
+# Output path: same directory as input, basename_flicker.mp4
+input_dir = os.path.dirname(input_file_path)
+input_basename = os.path.splitext(os.path.basename(input_file_path))[0]
+output_file_path = os.path.join(input_dir, f"{input_basename}_flicker.mp4")
+
+# ---------------------------------------------------------------------------
+# Open input video and derive properties
+# ---------------------------------------------------------------------------
 video = cv2.VideoCapture(input_file_path)
-print("Setting Up: █", end="\r")
+if not video.isOpened():
+    print(f"Could not open video: {input_file_path}")
+    sys.exit(1)
+
+print("Setting up…", end="\r")
 fps = video.get(cv2.CAP_PROP_FPS)
-print("Setting Up: ██", end="\r")
 frame_count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-print("Setting Up: ███", end="\r")
-duration = frame_count / fps
-print("Setting Up ████", end="\r")
-gray_history = []
-gray_threshold = float(sys.argv[2])
-gray_marked_frames = set()
-gray_window = 5
-width  = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
 height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
 video_fps = video.get(cv2.CAP_PROP_FPS)
-TEMPORAL_ALPHA = 0.6   # 0 = no smoothing, 1 = heavy smoothing
-TEMPORAL_EPS   = 6.0   # minimum luma drop (in 0–255) to trigger smoothing
 
-print("Setting Up █████", end="\r")
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+# Flicker detection / smoothing constants
+gray_history = []
+gray_marked_frames = set()
+gray_window = 5
+TEMPORAL_ALPHA = 0.6   # 0 = no smoothing, 1 = heavy smoothing
+TEMPORAL_EPS = 6.0     # minimum luma drop (0–255) to trigger smoothing
+
+fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 writer = cv2.VideoWriter(
-    "output.mp4",
+    output_file_path,
     fourcc,
     video_fps,
-    (width, height)
+    (width, height),
 )
 
-#Setting up the Progress Bar
 first_bar = progress_bar_util.ProgressBar(50)
 second_bar = progress_bar_util.ProgressBar(50)
 
-# Checks if the video file was opened successfully and whether the output file was created successfully
 if not writer.isOpened():
-    raise RuntimeError("ERROR: VideoWriter failed to open")
-
-if not video.isOpened():
-    print("ERROR: Video failed to open")
+    print(f"Could not create output: {output_file_path}")
     sys.exit(1)
+
+print(f"Output: {output_file_path}")
 
 # Determines whether to use cupy or numpy
 try:

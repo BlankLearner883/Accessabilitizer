@@ -1,0 +1,19 @@
+# Core (audio_subtitle.py)
+av
+faster-whisper
+
+# Video flicker reduction (flicker.py)
+opencv-python
+numpy
+# cupy  # optional: GPU acceleration for flicker
+
+# HTML tools (dyslexia.py, image_caption.py)
+cssutils
+
+# Image captioning (image_caption.py)
+transformers
+torch
+Pillow
+
+# GUI launcher (accessible_ui.py)
+customtkinter

@@ -1,19 +1,10 @@
-#!/usr/bin/env python3
 """
-audio_subtitle_prod.py
-
-Production-grade modular offline subtitle burner.
-
-Features:
-- Offline transcription using faster-whisper (CTranslate2 backend)
-- Bundled FFmpeg support (look for ./ffmpeg/bin/ffmpeg.exe)
-- SRT generation and burned-in subtitles (ASS styling via ffmpeg subtitles filter)
-- Custom ProgressBar class for terminal progress (transcription + encoding)
-- CLI and optional JSON config for defaults
-- Minimal external deps: faster-whisper only
+Offline subtitle burner: transcribe video with faster-whisper and burn SRT into the video via FFmpeg.
+Output: next to input as <basename>_subtitled.<ext>.
 """
 
 from __future__ import annotations
+
 import os
 import sys
 import subprocess
@@ -69,7 +60,38 @@ def setup_logging(log_file: Optional[str] = None, level=logging.INFO):
 
 
 # ----------------------------
-# FFmpeg / FFprobe helpers
+# Video duration (replaces ffprobe)
+# ----------------------------
+def get_video_duration_seconds(filename: str) -> Optional[float]:
+    """
+    Get video duration in seconds using PyAV. Return None if unknown or on error.
+    Requires: pip install av
+    """
+    try:
+        import av
+    except ImportError:
+        return None
+    try:
+        with av.open(filename) as container:
+            # Prefer first video stream duration (matches former ffprobe v:0 behavior)
+            if container.streams.video:
+                stream = container.streams.video[0]
+                if stream.duration is not None and stream.time_base:
+                    return float(stream.duration * stream.time_base)
+            # Fallback to container duration (often in microseconds)
+            if container.duration is not None:
+                try:
+                    tb = float(container.time_base) if container.time_base else 1e-6
+                except Exception:
+                    tb = 1e-6
+                return float(container.duration) * tb
+    except Exception:
+        return None
+    return None
+
+
+# ----------------------------
+# FFmpeg helpers
 # ----------------------------
 def find_executable_bundled_or_system(name: str) -> Optional[str]:
     """
@@ -91,26 +113,6 @@ def require_executable(name: str) -> str:
         input("Press Enter to exit...")
         sys.exit(1)
     return p
-
-
-def probe_duration_seconds(ffprobe_path: str, filename: str) -> Optional[float]:
-    """
-    Use ffprobe to get video duration in seconds. Return None if unknown.
-    """
-    cmd = [
-        ffprobe_path,
-        "-v", "error",
-        "-select_streams", "v:0",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        filename
-    ]
-    try:
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-        out = res.stdout.strip()
-        return float(out) if out else None
-    except Exception:
-        return None
 
 
 # ----------------------------
@@ -194,10 +196,10 @@ def build_force_style_from_args(args) -> str:
 # Transcription function (faster-whisper)
 # ----------------------------
 def transcribe_with_progress(video_path: str, model_name: str, device: str, compute_type: str,
-                             ffprobe_path: Optional[str], progress_bar: Optional[progress_bar_util.ProgressBar]) -> Tuple[List, dict]:
+                             progress_bar: Optional[progress_bar_util.ProgressBar]) -> Tuple[List, dict]:
     """
     Transcribe video using faster-whisper. Returns (segments_list, info_dict).
-    If ffprobe_path provided, we use the video duration (via ffprobe) to drive the progress bar.
+    Video duration (from get_video_duration_seconds) is used for progress bar when available.
     """
     logging.info("Transcription: loading model '%s' (device=%s, compute_type=%s)", model_name, device, compute_type)
     try:
@@ -212,10 +214,9 @@ def transcribe_with_progress(video_path: str, model_name: str, device: str, comp
             raise
 
     # attempt to get duration (seconds) for progress estimation
-    duration = None
-    if ffprobe_path:
-        duration = probe_duration_seconds(ffprobe_path, video_path)
-        logging.info("Detected video duration: ", human_time(duration) if duration else "unknown")
+    duration = get_video_duration_seconds(video_path)
+    if duration is not None:
+        logging.info("Detected video duration: %s", human_time(duration))
 
     logging.info("Beginning transcription (this may take a while)...")
     start_time = time.time()
@@ -249,7 +250,7 @@ def transcribe_with_progress(video_path: str, model_name: str, device: str, comp
 # Encode (burn-in) function
 # ----------------------------
 def burn_subtitles_with_ffmpeg(video_path: str, srt_path: str, out_path: str, ffmpeg_path: str,
-                               ffprobe_path: Optional[str], force_style: str,
+                               force_style: str,
                                encoding_progress_bar: Optional[progress_bar_util.ProgressBar]) -> bool:
     """
     Run ffmpeg to burn subtitles into video using subtitles filter with force_style.
@@ -273,9 +274,7 @@ def burn_subtitles_with_ffmpeg(video_path: str, srt_path: str, out_path: str, ff
 
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True)
 
-    duration = None
-    if ffprobe_path:
-        duration = probe_duration_seconds(ffprobe_path, video_path)
+    duration = get_video_duration_seconds(video_path)
 
     last_time = 0.0
     try:
@@ -300,7 +299,7 @@ def burn_subtitles_with_ffmpeg(video_path: str, srt_path: str, out_path: str, ff
 
     proc.wait()
     if encoding_progress_bar:
-        encoding_progress_bar.finish()
+        encoding_progress_bar.end()
 
     if proc.returncode != 0:
         logging.error("FFmpeg returned non-zero exit code: %s", proc.returncode)
@@ -367,11 +366,8 @@ def main():
             if getattr(args, k, None) in (None, False, ""):
                 setattr(args, k, v)
 
-    # find ffmpeg/ffprobe
+    # find ffmpeg (duration is obtained via get_video_duration_seconds / PyAV)
     ffmpeg_path = require_executable("ffmpeg")
-    ffprobe_path = find_executable_bundled_or_system("ffprobe")
-    if not ffprobe_path:
-        logging.warning("ffprobe not found; duration-based progress will be unavailable.")
 
     # determine device
     device = "cpu"
@@ -402,9 +398,9 @@ def main():
 
     # Transcribe
     try:
-        segments, info = transcribe_with_progress(video, args.model, device, compute_type, ffprobe_path, transcription_bar)
+        segments, info = transcribe_with_progress(video, args.model, device, compute_type, transcription_bar)
     except Exception as e:
-        logging.exception("Transcription failed: ", e)
+        logging.exception("Transcription failed: %s", e)
         return
 
     if not segments:
@@ -414,9 +410,9 @@ def main():
     # Write SRT
     try:
         write_srt(segments, srt_path)
-        logging.info("SRT written to ", srt_path)
+        logging.info("SRT written to %s", srt_path)
     except Exception as e:
-        logging.exception("Failed to write SRT: ", e)
+        logging.exception("Failed to write SRT: %s", e)
         return
 
     # Build force_style
@@ -426,12 +422,12 @@ def main():
         force_style += f",BackColour={args.box_color}"
 
     # Burn subtitles with ffmpeg
-    ok = burn_subtitles_with_ffmpeg(video, srt_path, out_path, ffmpeg_path, ffprobe_path, force_style, encoding_bar)
+    ok = burn_subtitles_with_ffmpeg(video, srt_path, out_path, ffmpeg_path, force_style, encoding_bar)
     if not ok:
         logging.error("Subtitle burn-in failed.")
         return
 
-    logging.info("All done! Output: ", out_path)
+    logging.info("All done! Output: %s", out_path)
     print("\n✅ Finished — output file:", out_path)
     if not args.no_pause:
         input("\nPress Enter to exit...")
