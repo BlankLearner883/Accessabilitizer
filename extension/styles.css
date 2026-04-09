@@ -1,13 +1,248 @@
-body {
-    font-family: Arial, sans-serif;
-    min-width: 200px;
-    padding: 10px;
+/* ── Palette (from blue.json) ─────────────────────────────────────────────
+   --bg:        #080705  (CTk root)
+   --bg-frame:  #2b2b2b  (gray17 frame)
+   --bg-panel:  #912f40  (buttons, inputs, textbox)
+   --hover:     #702632  (CTkButton hover)
+   --text:      #dce4ee  (all label/button text)
+   --text-muted:#979da2  (border / placeholder tone)
+   --border:    #565b5e
+   --border-hi: #979da2
+──────────────────────────────────────────────────────────────────────────── */
+:root {
+    --bg:           #080705;
+    --bg-frame:     #2b2b2b;
+    --bg-panel:     #912f40;
+    --hover:        #702632;
+    --text:         #dce4ee;
+    --text-muted:   #979da2;
+    --border:       #565b5e;
+    --border-hi:    #979da2;
+    --stopped:      #444444;
 }
 
-button {
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+body {
+    font-family: sans-serif;
+    min-width: 240px;
+    margin: 0;
+    padding: 10px 12px 12px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+}
+
+#status {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-bottom: 8px;
+    min-height: 16px;
+}
+
+/* ── Toggle buttons (shared style) ────────────────────────────────────────── */
+.toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin: 4px 0;
+    padding: 8px 10px;
+    cursor: pointer;
+    background: var(--bg-frame);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    text-align: left;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.toggle:hover {
+    background: var(--hover);
+    border-color: var(--border-hi);
+}
+
+/* Active / ON state */
+.toggle--on {
+    background: var(--bg-panel);
+    border-color: var(--border-hi);
+    box-shadow: 0 0 4px #912f4066;
+}
+
+/* Visual indicator dot on the right side of toggle */
+.toggle::after {
+    content: "";
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--stopped);
+    flex-shrink: 0;
+    margin-left: auto;
+    transition: background 0.15s;
+}
+
+.toggle--on::after {
+    background: var(--text);
+    box-shadow: 0 0 4px #dce4ee88;
+}
+
+/* ── TTS Panel ────────────────────────────────────────────────────────────── */
+#tts-panel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-frame);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 11px;
+    margin-bottom: 10px;
+}
+
+#tts-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+#tts-state-text {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* TTS toggle overrides (smaller, inline) */
+#btn-tts {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    margin: 0;
+    padding: 5px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+}
+
+#btn-tts::after {
+    display: none;
+}
+
+/* Animated dot */
+.dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.dot--active {
+    background: var(--bg-panel);
+    box-shadow: 0 0 6px #912f4099;
+    animation: pulse 1.4s ease-in-out infinite;
+}
+
+.dot--paused {
+    background: var(--border-hi);
+    box-shadow: 0 0 4px #979da255;
+}
+
+.dot--stopped {
+    background: var(--stopped);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1;    transform: scale(1); }
+    50%       { opacity: 0.5; transform: scale(0.82); }
+}
+
+/* ── Feature panel ────────────────────────────────────────────────────────── */
+#feature-panel {
+    background: var(--bg-frame);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 11px;
+    margin-bottom: 10px;
+}
+
+#feature-panel h3 {
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+#feature-panel .toggle {
+    margin: 3px 0;
+}
+
+/* ── Switch area ──────────────────────────────────────────────────────────── */
+#switch-area {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+}
+
+.version-status {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin: 4px 0 6px;
+}
+
+.version-status--current {
+    color: var(--text-muted);
+}
+
+.version-status--available {
+    color: #6ecf6e;
+}
+
+.version-status--missing {
+    color: #cf6e6e;
+}
+
+.version-status--error {
+    color: #cf6e6e;
+}
+
+#btn-switch {
     display: block;
     width: 100%;
-    margin: 5px 0;
-    padding: 8px;
+    margin: 4px 0;
+    padding: 8px 10px;
     cursor: pointer;
+    background: var(--bg-panel);
+    color: var(--text);
+    border: 1px solid var(--border-hi);
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+#btn-switch:hover {
+    background: var(--hover);
+}
+
+#btn-original {
+    display: block;
+    width: 100%;
+    margin: 4px 0;
+    padding: 8px 10px;
+    cursor: pointer;
+    background: var(--bg-frame);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+#btn-original:hover {
+    background: var(--hover);
+    border-color: var(--border-hi);
+    color: var(--text);
 }

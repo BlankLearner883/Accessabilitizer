@@ -1,0 +1,68 @@
+<!-- enable accessabilitizer -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML with CSS Example</title>
+    <!-- Links the external CSS file -->
+    <link rel="stylesheet" href="styles.css">
+<style>
+/* OpenDyslexic accessibility override */
+@font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff') format('woff');
+    font-weight: bold;
+    font-style: normal;
+}
+
+/* Apply globally but safely */
+body, p, span, li, a, td, th, div {
+    font-family: 'OpenDyslexic', Arial, sans-serif !important;
+}
+</style><style>
+/* OpenDyslexic accessibility override */
+@font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff') format('woff');
+    font-weight: bold;
+    font-style: normal;
+}
+
+/* Apply globally but safely */
+body, p, span, li, a, td, th, div {
+    font-family: 'OpenDyslexic', Arial, sans-serif !important;
+}
+</style></head>
+<body>
+    <header>
+        <h1>Welcome to My Website</h1>
+    </header>
+
+    <p>This is a paragraph of text styled with CSS.</p>
+
+    <ul>
+        <li>This is the first video ever posted on YouTube</li>
+        <video width="640" height="360" controls>
+        <source src="me_at_the_zoo_subtitled.mp4" type="video/mp4">
+         Your browser does not support the video tag.
+        </video>
+        <li>Item Two</li>
+        <li>Item Three</li>
+    </ul>
+</body>
+</html>

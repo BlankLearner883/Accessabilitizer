@@ -81,7 +81,7 @@ def main() -> int:
         return run_script("dyslexia.py", [args.path])
 
     if args.mode == "caption":
-        return run_script("image_caption.py", [args.path])
+        return run_script("image_caption.py", [args.path, "--yes"])
 
     return 0
 

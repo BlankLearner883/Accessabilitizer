@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -6,7 +7,42 @@
 <body>
     <div id="status">Checking...</div>
 
-    <div id="controls" style="display:none;"></div>
+    <div id="tts-panel">
+        <div id="tts-label">
+            <span id="tts-indicator" class="dot dot--active"></span>
+            <span id="tts-state-text">Reading aloud</span>
+        </div>
+        <button id="btn-tts" class="toggle toggle--on" role="switch" aria-checked="true" title="Toggle text-to-speech">
+            TTS
+        </button>
+    </div>
+
+    <div id="feature-panel">
+    <h3>Features</h3>
+
+    <button id="toggle-dyslexia" class="toggle" role="switch" aria-checked="false">
+        Dyslexia-friendly
+    </button>
+
+    <button id="toggle-captioned" class="toggle" role="switch" aria-checked="false">
+        Image captions
+    </button>
+
+    <button id="toggle-subtitled" class="toggle" role="switch" aria-checked="false">
+        Subtitled videos
+    </button>
+
+    <!-- 🔥 ADD THIS -->
+    <button id="toggle-flicker" class="toggle" role="switch" aria-checked="false">
+        Flicker reduction
+    </button>
+</div>
+
+    <div id="switch-area">
+        <div id="version-status"></div>
+        <button id="btn-switch" style="display:none;">Switch to this version</button>
+        <button id="btn-original">Go to original version</button>
+    </div>
 
     <script src="popup.js"></script>
 </body>

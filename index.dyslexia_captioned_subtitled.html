@@ -6,7 +6,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Accessible HTML Example</title>
     <link rel="stylesheet" href="styles.css">
-</head>
+<style>
+/* OpenDyslexic accessibility override */
+@font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff') format('woff');
+    font-weight: bold;
+    font-style: normal;
+}
+
+/* Apply globally but safely */
+body, p, span, li, a, td, th, div {
+    font-family: 'OpenDyslexic', Arial, sans-serif !important;
+}
+</style></head>
 <body>
     <header>
         <h1>Welcome to My Website</h1>
@@ -19,27 +39,18 @@
             <li>
                 <strong>Walking in the park:
                 </strong>
-            </li>
-            <li>
-                <br>
                 <img src="walking_in_the_park.jpg" alt="A scenic view of a sunlit path through a green city park"><p class="caption">a man walking down a path towards a grassy field</p>
             </li>
             <li>
                 <strong>Warning: This video contains flashing lights (Epilepsy Trigger):</strong>
-            </li>
-            <li>
-                <br>
-                <video> width="640" height="360" controls>
+                <video width="640" height="360" controls>
                     <source src="epilepsy.mp4" type="video/mp4">
                 </video>
             </li>
             <li>
                 <strong>Me at the zoo (The first YouTube video):</strong>
-            </li>
-            <li>
-                <br>
                 <video width="640" height="360" controls>
-                    <source src="me_at_the_zoo.mp4" type="video/mp4">
+                    <source src="me_at_the_zoo_subtitled.mp4" type="video/mp4">
                     <track src="captions_en.vtt" kind="captions" srclang="en" label="English">
                 </video>
             </li>

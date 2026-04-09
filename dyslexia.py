@@ -17,7 +17,7 @@ from typing import List, Tuple
 from urllib.parse import urljoin
 
 try:
-    import cssutils  # optional: used only for “linked CSS inspection”
+    import mini_cssutils as cssutils
 except Exception:  # pragma: no cover
     cssutils = None
 
@@ -157,10 +157,10 @@ def main() -> None:
     with open(input_path, "r", encoding="utf-8") as f:
         html_text = f.read()
 
-    # Optional inspection of linked CSS. (We don't currently use the results.)
+    # Optional inspection of linked CSS for font-family overrides.
     if cssutils is not None:
-        _css_texts = extract_linked_css(html_text, base_dir)
-        for css in _css_texts:
+        css_texts = extract_linked_css(html_text, base_dir)
+        for css_text in css_texts:
             try:
                 sheet = cssutils.parseString(css)
                 for rule in sheet:

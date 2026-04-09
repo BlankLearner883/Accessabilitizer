@@ -1,6 +1,13 @@
 """
 Offline subtitle burner: transcribe video with faster-whisper and burn SRT into the video via FFmpeg.
-Output: next to input as <basename>_subtitled.<ext>.
+
+Modes:
+  - Video file:  python audio_subtitle.py video.mp4 [options]
+  - HTML file:   python audio_subtitle.py page.html [options]
+    Scans HTML for <video>/<source> tags, subtitles each video, and writes
+    a new HTML file with the subtitled video paths substituted.
+
+Output: next to input as <basename>_subtitled.<ext> (video) or <basename>_subtitled.html.
 """
 
 from __future__ import annotations
@@ -17,7 +24,8 @@ import argparse
 import json
 import logging
 import re
-from typing import List, Tuple, Optional
+from html.parser import HTMLParser
+from typing import List, Tuple, Optional, Dict
 
 import progress_bar_util
 
@@ -27,9 +35,7 @@ try:
 except Exception as e:
     print("Missing dependency: faster-whisper (pip install faster-whisper)")
     print("Error:", e)
-    input("Press Enter to exit...")
     sys.exit(1)
-
 
 
 def human_time(seconds: Optional[float]) -> str:
@@ -43,9 +49,8 @@ def human_time(seconds: Optional[float]) -> str:
     return f"{m:02d}:{s:02d}"
 
 
-# ----------------------------
+
 # Logging
-# ----------------------------
 def setup_logging(log_file: Optional[str] = None, level=logging.INFO):
     root = logging.getLogger()
     root.setLevel(level)
@@ -59,9 +64,9 @@ def setup_logging(log_file: Optional[str] = None, level=logging.INFO):
         root.addHandler(fh)
 
 
-# ----------------------------
+
 # Video duration (replaces ffprobe)
-# ----------------------------
+
 def get_video_duration_seconds(filename: str) -> Optional[float]:
     """
     Get video duration in seconds using PyAV. Return None if unknown or on error.
@@ -73,12 +78,10 @@ def get_video_duration_seconds(filename: str) -> Optional[float]:
         return None
     try:
         with av.open(filename) as container:
-            # Prefer first video stream duration (matches former ffprobe v:0 behavior)
             if container.streams.video:
                 stream = container.streams.video[0]
                 if stream.duration is not None and stream.time_base:
                     return float(stream.duration * stream.time_base)
-            # Fallback to container duration (often in microseconds)
             if container.duration is not None:
                 try:
                     tb = float(container.time_base) if container.time_base else 1e-6
@@ -90,9 +93,9 @@ def get_video_duration_seconds(filename: str) -> Optional[float]:
     return None
 
 
-# ----------------------------
+
 # FFmpeg helpers
-# ----------------------------
+
 def find_executable_bundled_or_system(name: str) -> Optional[str]:
     """
     Prefer bundled ./ffmpeg/bin/<name> (or <name>.exe on Windows), else fallback to PATH.
@@ -110,28 +113,24 @@ def require_executable(name: str) -> str:
     p = find_executable_bundled_or_system(name)
     if not p:
         logging.error("%s not found. Place it in ./ffmpeg/bin/ or install to PATH.", name)
-        input("Press Enter to exit...")
         sys.exit(1)
-    return p
 
 
-# ----------------------------
+
 # FFmpeg filter path escaping
-# ----------------------------
+
 def ffmpeg_escape_path_for_subtitles(path: str) -> str:
     p = str(pathlib.Path(path).resolve())
     if os.name == "nt":
-        # double backslashes and escape colon
         return p.replace("\\", "\\\\").replace(":", "\\:")
     else:
-        # escape single quotes for ffmpeg filter, will wrap in single quotes
         return p.replace("'", r"\'")
 
 
-# ----------------------------
+
 # Parsing ffmpeg progress (stderr)
-# ----------------------------
-_time_re = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")  # matches time=HH:MM:SS.xx
+
+_time_re = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")
 
 
 def ffmpeg_time_to_seconds(h: str, m: str, s: str) -> float:
@@ -145,9 +144,9 @@ def parse_ffmpeg_progress_time(line: str) -> Optional[float]:
     return None
 
 
-# ----------------------------
+
 # SRT writing
-# ----------------------------
+
 def srt_timestamp(seconds: float) -> str:
     ms = int((seconds - int(seconds)) * 1000)
     ss = int(seconds)
@@ -165,23 +164,21 @@ def write_srt(segments: List, srt_path: str):
                 end = float(seg.end)
                 text = seg.text.strip()
             except Exception:
-                # defensive fallback if segment fields differ
                 start = float(getattr(seg, "start", 0.0))
                 end = float(getattr(seg, "end", 0.0))
                 text = str(getattr(seg, "text", "")).strip()
             f.write(f"{i}\n{srt_timestamp(start)} --> {srt_timestamp(end)}\n{text}\n\n")
 
 
-# ----------------------------
+
 # Build ASS force_style string for ffmpeg subtitles filter
-# ----------------------------
+
 def build_force_style_from_args(args) -> str:
     parts = []
     if args.font:
         parts.append(f"Fontname={args.font}")
     parts.append(f"Fontsize={args.font_size}")
     if args.font_color:
-        # Accept names or #RRGGBB
         parts.append(f"PrimaryColour={args.font_color}")
     parts.append(f"Outline={args.outline}")
     parts.append(f"Shadow={args.shadow}")
@@ -192,126 +189,164 @@ def build_force_style_from_args(args) -> str:
     return ",".join(parts)
 
 
-# ----------------------------
+
 # Transcription function (faster-whisper)
-# ----------------------------
 def transcribe_with_progress(video_path: str, model_name: str, device: str, compute_type: str,
                              progress_bar: Optional[progress_bar_util.ProgressBar]) -> Tuple[List, dict]:
-    """
-    Transcribe video using faster-whisper. Returns (segments_list, info_dict).
-    Video duration (from get_video_duration_seconds) is used for progress bar when available.
-    """
     logging.info("Transcription: loading model '%s' (device=%s, compute_type=%s)", model_name, device, compute_type)
-    try:
-        model = WhisperModel(model_name, device=device, compute_type=compute_type)
-    except Exception as e:
-        logging.warning("Failed to load model with compute_type=%s: %s", compute_type, e)
-        # if we tried float16 on CUDA and failed, auto-fallback to float32
-        if device == "cuda" and compute_type and "16" in compute_type:
-            logging.info("Retrying with compute_type=float32")
-            model = WhisperModel(model_name, device=device, compute_type="float32")
-        else:
-            raise
 
-    # attempt to get duration (seconds) for progress estimation
+    # Define model inside this function scope
+    model = WhisperModel(model_name, device=device, compute_type=compute_type)
+
+    # FIX: Extract audio to WAV first to prevent "IndexError: tuple index out of range"
+    temp_audio = os.path.join(tempfile.gettempdir(), f"temp_{os.getpid()}.wav")
+    ffmpeg_path = r"C:\Users\iniya\Documents\AuditoryNotifier\ffmpeg\bin\ffmpeg.exe"
+
+    extract_cmd = [
+        ffmpeg_path, "-y", "-i", video_path,
+        "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
+        temp_audio
+    ]
+    subprocess.run(extract_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    if not os.path.exists(temp_audio) or os.path.getsize(temp_audio) == 0:
+        logging.error("No audio track found or extraction failed for %s", video_path)
+        return [], {}
+
     duration = get_video_duration_seconds(video_path)
-    if duration is not None:
-        logging.info("Detected video duration: %s", human_time(duration))
+    logging.info("Beginning transcription...")
 
-    logging.info("Beginning transcription (this may take a while)...")
-    start_time = time.time()
+    # Use the local 'model' variable to transcribe the extracted WAV file
+    segments_iter, info = model.transcribe(temp_audio, beam_size=5)
 
-    segments_iter, info = model.transcribe(video_path, beam_size=5)
     segments = []
-    last_time_reported = 0.0
-
     for seg in segments_iter:
         segments.append(seg)
-        # faster-whisper provides seg.start, seg.end as floats (seconds)
-        end_time = getattr(seg, "end", None)
-        if end_time is None:
-            continue
-        # update progress bar based on time fraction if duration known
         if progress_bar and duration:
-            frac = min(1.0, float(end_time) / float(duration)) if duration else 0.0
-            progress_bar.update(frac)
-            last_time_reported = float(end_time)
+            progress_bar.update(min(1.0, float(seg.end) / float(duration)))
 
-    # finalize progress bar
-    if progress_bar:
-        progress_bar.end()
+    if progress_bar: progress_bar.end()
 
-    elapsed = time.time() - start_time
-    logging.info("Transcription finished in %s (segments: %d)", human_time(elapsed), len(segments))
+    # Clean up
+    if os.path.exists(temp_audio): os.remove(temp_audio)
+
     return segments, info
 
 
-# ----------------------------
+
 # Encode (burn-in) function
-# ----------------------------
 def burn_subtitles_with_ffmpeg(video_path: str, srt_path: str, out_path: str, ffmpeg_path: str,
                                force_style: str,
                                encoding_progress_bar: Optional[progress_bar_util.ProgressBar]) -> bool:
-    """
-    Run ffmpeg to burn subtitles into video using subtitles filter with force_style.
-    Returns True on success.
-    """
+    # ADD THIS CHECK:
+    if ffmpeg_path is None:
+        logging.error("FFmpeg path is None. Cannot proceed with subtitle burn-in.")
+        return False
+
     escaped_srt = ffmpeg_escape_path_for_subtitles(srt_path)
-    # protect single quotes inside force_style just in case
-    fs_escaped = force_style.replace("'", r"\'")
-    vf_arg = f"subtitles='{escaped_srt}':force_style='{fs_escaped}'"
-
-    cmd = [
-        ffmpeg_path,
-        "-y",
-        "-i", video_path,
-        "-vf", vf_arg,
-        "-c:a", "copy",
-        out_path
-    ]
-    logging.info("Running ffmpeg burn-in (this may take a while).")
-    logging.debug("FFmpeg cmd: %s", " ".join(cmd))
-
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True)
-
-    duration = get_video_duration_seconds(video_path)
-
-    last_time = 0.0
-    try:
-        # read stderr line-by-line and update progress
-        while True:
-            line = proc.stderr.readline()
-            if line == "" and proc.poll() is not None:
-                break
-            if not line:
-                continue
-            cur = parse_ffmpeg_progress_time(line)
-            if cur is not None and encoding_progress_bar and duration:
-                frac = min(1.0, float(cur) / float(duration))
-                encoding_progress_bar.update(frac)
-                last_time = cur
-            # optionally, log ffmpeg output at debug level
-            logging.debug("ffmpeg: ", line.strip())
-    except KeyboardInterrupt:
-        proc.kill()
-        logging.warning("Encoding canceled by user.")
-        return False
-
-    proc.wait()
-    if encoding_progress_bar:
-        encoding_progress_bar.end()
-
-    if proc.returncode != 0:
-        logging.error("FFmpeg returned non-zero exit code: %s", proc.returncode)
-        return False
-
-    logging.info("FFmpeg finished successfully.")
-    return True
+    # ... rest of the function
 
 
 # ----------------------------
+# HTML video extraction and rewriting
+# ----------------------------
+class VideoSourceExtractor(HTMLParser):
+    """Extract video source paths from <video> and <source> tags."""
+
+    VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".wmv", ".flv"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.video_sources: List[str] = []
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        if tag.lower() == "video":
+            attr_map = {k.lower(): v for k, v in attrs}
+            src = attr_map.get("src")
+            if src:
+                self.video_sources.append(src)
+        elif tag.lower() == "source":
+            attr_map = {k.lower(): v for k, v in attrs}
+            src = attr_map.get("src")
+            if src:
+                self.video_sources.append(src)
+
+
+def extract_video_sources(html_text: str) -> List[str]:
+    parser = VideoSourceExtractor()
+    parser.feed(html_text)
+    return parser.video_sources
+
+
+def resolve_video_path(html_file_path: str, src: str) -> Optional[str]:
+    """Resolve a video src relative to the HTML file's directory."""
+    html_dir = os.path.dirname(os.path.abspath(html_file_path))
+    if os.path.isabs(src):
+        return src if os.path.isfile(src) else None
+    if src.startswith("/"):
+        candidate = os.path.normpath(os.path.join(html_dir, src.lstrip("/")))
+    else:
+        candidate = os.path.normpath(os.path.join(html_dir, src))
+    return candidate if os.path.isfile(candidate) else None
+
+
+class VideoSrcRewriter(HTMLParser):
+    """Rebuild HTML while replacing video source paths with subtitled versions."""
+
+    def __init__(self, src_map: Dict[str, str]) -> None:
+        """
+        src_map: original src attribute value -> new src attribute value
+        """
+        super().__init__(convert_charrefs=True)
+        self.src_map = src_map
+        self.parts: List[str] = []
+
+    def _attrs_to_string(self, attrs: List[Tuple[str, Optional[str]]]) -> str:
+        out: List[str] = []
+        for k, v in attrs:
+            k_l = k.lower()
+            if v is None:
+                out.append(f" {k_l}")
+            else:
+                if k_l == "src" and v in self.src_map:
+                    v = self.src_map[v]
+                out.append(f' {k_l}="{self._escape_attr(v)}"')
+        return "".join(out)
+
+    @staticmethod
+    def _escape_attr(value: str) -> str:
+        return value.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        tag_l = tag.lower()
+        self.parts.append(f"<{tag_l}{self._attrs_to_string(attrs)}>")
+
+    def handle_startendtag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        tag_l = tag.lower()
+        self.parts.append(f"<{tag_l}{self._attrs_to_string(attrs)} />")
+
+    def handle_endtag(self, tag: str) -> None:
+        self.parts.append(f"</{tag.lower()}>")
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+    def handle_comment(self, data: str) -> None:
+        self.parts.append(f"<!--{data}-->")
+
+    def handle_decl(self, decl: str) -> None:
+        self.parts.append(f"<!{decl}>")
+
+    def handle_pi(self, data: str) -> None:
+        self.parts.append(f"<?{data}?>")
+
+    def get_html(self) -> str:
+        return "".join(self.parts)
+
+
+
 # Config handling
-# ----------------------------
+
 def load_json_config(path: str) -> dict:
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -321,26 +356,78 @@ def load_json_config(path: str) -> dict:
         return {}
 
 
-# ----------------------------
+
+# Process a single video file
+
+def process_video(
+    video_path: str,
+    ffmpeg_path: str,
+    device: str,
+    compute_type: str,
+    model_name: str,
+    args,
+) -> Optional[str]:
+    """
+    Transcribe and burn subtitles into a video.
+    Returns the output path on success, None on failure.
+    """
+    base_name, ext = os.path.splitext(os.path.basename(video_path))
+    out_path = os.path.join(os.path.dirname(video_path), f"{base_name}_subtitled{ext}")
+    srt_path = os.path.join(tempfile.gettempdir(), f"{base_name}.srt")
+
+    transcription_bar = progress_bar_util.ProgressBar(total_segment_count=args.bars)
+    encoding_bar = progress_bar_util.ProgressBar(total_segment_count=args.bars)
+
+    try:
+        segments, info = transcribe_with_progress(video_path, model_name, device, compute_type, transcription_bar)
+    except Exception as e:
+        logging.exception("Transcription failed for %s: %s", video_path, e)
+        return None
+
+    if not segments:
+        logging.warning("No transcription segments for %s, skipping.", video_path)
+        return None
+
+    try:
+        write_srt(segments, srt_path)
+        logging.info("SRT written to %s", srt_path)
+    except Exception as e:
+        logging.exception("Failed to write SRT for %s: %s", video_path, e)
+        return None
+
+    force_style = build_force_style_from_args(args)
+
+    ok = burn_subtitles_with_ffmpeg(video_path, srt_path, out_path, ffmpeg_path, force_style, encoding_bar)
+    if not ok:
+        logging.error("Subtitle burn-in failed for %s.", video_path)
+        return None
+
+    logging.info("Subtitled video: %s", out_path)
+    return out_path
+
+
+
 # CLI / main
-# ----------------------------
+
 def build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="audio_subtitle_prod", description="Offline subtitle burner (faster-whisper + bundled ffmpeg)")
-    p.add_argument("video", help="Input video file path")
+    p = argparse.ArgumentParser(
+        prog="audio_subtitle",
+        description="Offline subtitle burner (faster-whisper + bundled ffmpeg). Accepts a video file or an HTML file.",
+    )
+    p.add_argument("input", help="Input video file or HTML file path")
     p.add_argument("--config", help="Optional JSON config file path with default styling")
-    # styling options (YouTube-style defaults)
     p.add_argument("--font-size", type=int, default=24, help="Font size (default 24)")
     p.add_argument("--font-color", type=str, default="white", help="Font color name or #RRGGBB (default white)")
     p.add_argument("--outline", type=int, default=2, help="Outline thickness (default 2)")
     p.add_argument("--shadow", type=int, default=1, help="Shadow thickness (default 1)")
     p.add_argument("--font", type=str, default="Arial", help="Font name (default Arial)")
-    p.add_argument("--box", action="store_true", help="Enable background box (default False unless set in config)")
+    p.add_argument("--box", action="store_true", help="Enable background box")
     p.add_argument("--box-color", type=str, default="black", help="Box color (default black)")
     p.add_argument("--margin", type=int, default=20, help="Bottom margin (MarginV) in pixels (default 20)")
     p.add_argument("--model", type=str, default="medium", help="Whisper model (tiny, base, small, medium, large)")
-    p.add_argument("--device", type=str, choices=["auto", "cpu", "cuda"], default="auto", help="Device to run on (auto/cpu/cuda)")
-    p.add_argument("--compute-type", type=str, default=None, help="CTranslate2 compute_type override (float16/float32/auto)")
-    p.add_argument("--bars", type=int, default=30, help="Progress bar granularity (number of blocks, default 30)")
+    p.add_argument("--device", type=str, choices=["auto", "cpu", "cuda"], default="auto", help="Device (auto/cpu/cuda)")
+    p.add_argument("--compute-type", type=str, default=None, help="CTranslate2 compute_type override")
+    p.add_argument("--bars", type=int, default=30, help="Progress bar granularity (default 30)")
     p.add_argument("--log-file", type=str, default=None, help="Optional log file path")
     p.add_argument("--no-pause", action="store_true", help="Don't wait for Enter at end")
     return p
@@ -352,83 +439,101 @@ def main():
 
     setup_logging(args.log_file)
 
-    video = args.video
-    if not os.path.isfile(video):
-        logging.error("Video file not found: %s", video)
-        input("Press Enter to exit...")
-        return
+    input_path = args.input
+    if not os.path.isfile(input_path):
+        logging.error("File not found: %s", input_path)
+        sys.exit(1)
 
-    # Config file overrides defaults if provided
     if args.config:
         cfg = load_json_config(args.config)
-        # apply config keys if present and not specified via CLI (CLI takes precedence)
         for k, v in cfg.items():
             if getattr(args, k, None) in (None, False, ""):
                 setattr(args, k, v)
 
-    # find ffmpeg (duration is obtained via get_video_duration_seconds / PyAV)
     ffmpeg_path = require_executable("ffmpeg")
 
-    # determine device
     device = "cpu"
     if args.device == "auto":
-        # try torch detection first (if available)
         try:
             import torch
             device = "cuda" if torch.cuda.is_available() else "cpu"
         except Exception:
-            # fall back to environment hint
             device = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES") else "cpu"
     else:
         device = args.device
 
-    # compute type selection
     compute_type = args.compute_type
     if compute_type is None:
         compute_type = "float16" if device == "cuda" else "float32"
 
-    # Prepare output paths
-    base_name, ext = os.path.splitext(os.path.basename(video))
-    out_path = os.path.join(os.path.dirname(video), f"{base_name}_subtitled{ext}")
-    srt_path = os.path.join(tempfile.gettempdir(), f"{base_name}.srt")
+    _, ext = os.path.splitext(input_path)
+    is_html = ext.lower() in (".html", ".htm")
 
-    # Prepare progress bars
-    transcription_bar = progress_bar_util.ProgressBar(total_segment_count=args.bars)
-    encoding_bar = progress_bar_util.ProgressBar(total_segment_count=args.bars)
+    if is_html:
+        # ---- HTML mode ----
+        with open(input_path, "r", encoding="utf-8") as f:
+            html_text = f.read()
 
-    # Transcribe
-    try:
-        segments, info = transcribe_with_progress(video, args.model, device, compute_type, transcription_bar)
-    except Exception as e:
-        logging.exception("Transcription failed: %s", e)
-        return
+        raw_sources = extract_video_sources(html_text)
+        if not raw_sources:
+            logging.warning("No video sources found in %s.", input_path)
+            if not args.no_pause:
+                input("\nPress Enter to exit...")
+            return
 
-    if not segments:
-        logging.error("No transcription segments returned.")
-        return
+        # Resolve and deduplicate
+        src_to_real: Dict[str, str] = {}
+        real_to_subtitled: Dict[str, str] = {}
+        for src in raw_sources:
+            real = resolve_video_path(input_path, src)
+            if real is None:
+                logging.warning("Video not found: %s (resolved from src=%r)", src, src)
+                continue
+            src_to_real[src] = real
 
-    # Write SRT
-    try:
-        write_srt(segments, srt_path)
-        logging.info("SRT written to %s", srt_path)
-    except Exception as e:
-        logging.exception("Failed to write SRT: %s", e)
-        return
+        unique_videos = list(set(src_to_real.values()))
+        logging.info("Found %d unique video(s) in HTML.", len(unique_videos))
 
-    # Build force_style
-    force_style = build_force_style_from_args(args)
-    if args.box:
-        # Append BackColour; note: opacity handling is complex, not all FFmpeg builds support alpha in BackColour
-        force_style += f",BackColour={args.box_color}"
+        for video_path in unique_videos:
+            subtitled = process_video(video_path, ffmpeg_path, device, compute_type, args.model, args)
+            if subtitled:
+                real_to_subtitled[video_path] = subtitled
 
-    # Burn subtitles with ffmpeg
-    ok = burn_subtitles_with_ffmpeg(video, srt_path, out_path, ffmpeg_path, force_style, encoding_bar)
-    if not ok:
-        logging.error("Subtitle burn-in failed.")
-        return
+        if not real_to_subtitled:
+            logging.error("No videos were successfully subtitled.")
+            if not args.no_pause:
+                input("\nPress Enter to exit...")
+            return
 
-    logging.info("All done! Output: %s", out_path)
-    print("\n✅ Finished — output file:", out_path)
+        # Build src -> subtitled_src map for HTML rewriting
+        src_map: Dict[str, str] = {}
+        for orig_src, real_path in src_to_real.items():
+            if real_path in real_to_subtitled:
+                subtitled_path = real_to_subtitled[real_path]
+                # Use relative path from HTML file to subtitled video
+                html_dir = os.path.dirname(os.path.abspath(input_path))
+                try:
+                    rel = os.path.relpath(subtitled_path, html_dir)
+                except ValueError:
+                    rel = subtitled_path
+                src_map[orig_src] = rel
+
+        rewriter = VideoSrcRewriter(src_map)
+        rewriter.feed(html_text)
+        out_html = rewriter.get_html()
+
+        base, _ = os.path.splitext(input_path)
+        output_html = base + "_subtitled.html"
+        with open(output_html, "w", encoding="utf-8") as f:
+            f.write(out_html)
+
+        logging.info("HTML with subtitled videos written to %s", output_html)
+    else:
+        # ---- Single video mode ----
+        result = process_video(input_path, ffmpeg_path, device, compute_type, args.model, args)
+        if result:
+            logging.info("All done! Output: %s", result)
+
     if not args.no_pause:
         input("\nPress Enter to exit...")
 

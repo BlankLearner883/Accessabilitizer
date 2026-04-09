@@ -3,6 +3,7 @@
   "name": "Accessabilitizer",
   "version": "1.0",
   "description": "Enable accessibility versions of websites.",
+  "permissions": ["activeTab", "scripting"],
   "host_permissions": ["<all_urls>", "http://localhost/*", "http://127.0.0.1/*"],
 
   "action": {

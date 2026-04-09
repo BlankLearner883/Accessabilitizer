@@ -37,11 +37,12 @@ def parse_args() -> tuple[str, bool]:
     return input_path, bool(args.yes)
 
 
-def caption_image(processor, model, image_path: str) -> str:
+def caption_image(processor, model, image_path: str, device: torch.device) -> str:
     """Generate a caption for the image at image_path. Returns caption or error string."""
     try:
         image = Image.open(image_path).convert("RGB")
         inputs = processor(image, return_tensors="pt")
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         with torch.no_grad():
             ids = model.generate(**inputs)
         return processor.decode(ids[0], skip_special_tokens=True)
@@ -88,7 +89,6 @@ class ImgSrcExtractor(HTMLParser):
             self.img_srcs.append(src)
 
     def handle_startendtag(self, tag: str, attrs: List[tuple[str, str | None]]) -> None:
-        # e.g. <img ... />
         self.handle_starttag(tag, attrs)
 
 
@@ -100,7 +100,6 @@ def extract_img_srcs(html_text: str) -> List[str]:
 
 def resolve_image_path(html_file_path: str, img_src: str) -> str:
     html_dir = os.path.dirname(os.path.abspath(html_file_path))
-    # Common cases: relative paths ("images/a.jpg") or root-relative paths ("/images/a.jpg")
     if os.path.isabs(img_src):
         return img_src
     if img_src.startswith("/"):
@@ -111,22 +110,9 @@ def resolve_image_path(html_file_path: str, img_src: str) -> str:
 class CaptionInjector(HTMLParser):
     """Rebuilds HTML while inserting captions after each <img> tag."""
 
-    # HTML void elements list (won't have end tags)
     VOID_ELEMENTS = {
-        "area",
-        "base",
-        "br",
-        "col",
-        "embed",
-        "hr",
-        "img",
-        "input",
-        "link",
-        "meta",
-        "param",
-        "source",
-        "track",
-        "wbr",
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
     }
 
     def __init__(self, caption_by_src: Dict[str, str]) -> None:
@@ -155,11 +141,7 @@ class CaptionInjector(HTMLParser):
             caption = self.caption_by_src.get(src, "")
             self.parts.append(f'<p class="caption">{html.escape(caption)}</p>')
 
-        # For void elements, HTMLParser might still call endtag for some malformed HTML.
-        # We don't attempt to suppress end tags; we only ensure we insert caption after <img>.
-
     def handle_startendtag(self, tag: str, attrs: List[tuple[str, str | None]]) -> None:
-        # e.g. <img ... />
         tag_l = tag.lower()
         attrs_str = self._attrs_to_string(attrs)
         self.parts.append(f"<{tag_l}{attrs_str} />")
@@ -182,7 +164,6 @@ class CaptionInjector(HTMLParser):
         self.parts.append(f"<!{decl}>")
 
     def handle_pi(self, data: str) -> None:
-        # processing instruction: <? ... ?>
         self.parts.append(f"<?{data}?>")
 
     def get_html(self) -> str:
@@ -202,28 +183,24 @@ def main() -> None:
             print("\nCancelled. No output file written.")
             return
 
-    # If there are no images, there's nothing to do.
     if not img_srcs:
         print("\nNo <img src=...> tags found; no output written.")
         return
 
-    # Generate captions (compute once per unique src).
-    unique_srcs: List[str] = []
-    seen: set[str] = set()
-    for s in img_srcs:
-        if s not in seen:
-            seen.add(s)
-            unique_srcs.append(s)
+    unique_srcs = list(dict.fromkeys(img_srcs))
 
-    print("Loading BLIP model...")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Loading BLIP model on {device}...")
     processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
     model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+    model.to(device)
+    model.eval()
     print("Model loaded.")
 
     caption_by_src: Dict[str, str] = {}
     for src in unique_srcs:
         image_path = resolve_image_path(input_path, src)
-        caption = caption_image(processor, model, image_path)
+        caption = caption_image(processor, model, image_path, device)
         caption_by_src[src] = caption
         print(f"{src} → {caption}")
 

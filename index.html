@@ -4,8 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HTML with CSS Example</title>
-    <!-- Links the external CSS file -->
+    <title>Accessible HTML Example</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -13,12 +12,38 @@
         <h1>Welcome to My Website</h1>
     </header>
 
-    <p>This is a paragraph of text styled with CSS.</p>
+    <main>
+        <p>This is a paragraph of text styled with CSS.</p>
 
-    <ul>
-        <li>Item One</li>
-        <li>Item Two</li>
-        <li>Item Three</li>
-    </ul>
+        <ul>
+            <li>
+                <strong>Walking in the park:
+                </strong>
+            </li>
+            <li>
+                <br>
+                <img src="walking_in_the_park.jpg" alt="A scenic view of a sunlit path through a green city park">
+            </li>
+            <li>
+                <strong>Warning: This video contains flashing lights (Epilepsy Trigger):</strong>
+            </li>
+            <li>
+                <br>
+                <video> width="640" height="360" controls>
+                    <source src="epilepsy.mp4" type="video/mp4">
+                </video>
+            </li>
+            <li>
+                <strong>Me at the zoo (The first YouTube video):</strong>
+            </li>
+            <li>
+                <br>
+                <video width="640" height="360" controls>
+                    <source src="me_at_the_zoo.mp4" type="video/mp4">
+                    <track src="captions_en.vtt" kind="captions" srclang="en" label="English">
+                </video>
+            </li>
+        </ul>
+    </main>
 </body>
-</html> b
+</html>

@@ -10,7 +10,7 @@ class ProgressBar:
     def update(self, current_completion: float) -> None:
         """Update bar; current_completion should be in [0, 1]."""
         filled = round(current_completion * self.total_segment_count)
-        bar = "█" * filled + "_" * (self.total_segment_count - filled)
+        bar = "#" * filled + "-" * (self.total_segment_count - filled)
         print(bar, end="\r")
 
     def end(self) -> None:
